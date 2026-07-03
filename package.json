@@ -1,0 +1,13 @@
+{
+  "name": "omi",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=@omi/engine",
+    "dev:server": "npm run dev --workspace=@omi/server",
+    "dev:client": "npm run dev --workspace=@omi/client",
+    "build": "npm run build --workspace=@omi/engine && npm run build --workspace=@omi/server && npm run build --workspace=@omi/client"
+  }
+}
