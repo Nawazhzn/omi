@@ -107,6 +107,23 @@ body,
   animation: shine-sweep 900ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Slow ambient breathing glow — used behind the home-screen emblem, never on
+   interactive/text elements where a perpetual animation would be distracting. */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+.animate-glow-pulse {
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+/* Confetti fall — each piece supplies its own --x (drift), --r (end rotation),
+   and animation-duration/delay inline, so one keyframe covers every piece. */
+@keyframes confetti-fall {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--x, 0), 110vh, 0) rotate(var(--r, 360deg)); opacity: 0.85; }
+}
+
 /* Staggered rise-in for lobby/home content — set --delay per child. */
 @keyframes rise-in {
   from {

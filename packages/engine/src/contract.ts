@@ -35,6 +35,8 @@ export interface ClientToServerEvents {
     ack: (res: { ok: true } | { ok: false; error: string }) => void
   ) => void;
   "room:leave": (payload: Record<string, never>) => void;
+  /** Host-only (current occupant of seat 0): ends the game immediately for everyone in the room. */
+  "room:end": (payload: Record<string, never>, ack: (res: { ok: true } | { ok: false; error: string }) => void) => void;
   "seat:ready": (payload: { ready: boolean }) => void;
   "game:cutDeck": (payload: { cutPosition?: number }, ack: (res: { ok: boolean; error?: string }) => void) => void;
   "game:callTrump": (payload: { suit: Suit }, ack: (res: { ok: boolean; error?: string }) => void) => void;
@@ -62,6 +64,8 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "state:sync": (view: RoomSnapshot) => void;
+  /** Sent to every remaining player when the host ends the session early. */
+  "room:ended": (payload: { reason: string }) => void;
   "game:trumpCalled": (payload: { suit: Suit; bySeat: Seat }) => void;
   "game:cardPlayed": (payload: { seat: Seat; card: Card }) => void;
   "game:trickWon": (payload: { seat: Seat; trickIndex: number }) => void;

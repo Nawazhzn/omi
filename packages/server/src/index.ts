@@ -1,13 +1,15 @@
 import { createServer } from "node:http";
 import { randomInt, randomUUID } from "node:crypto";
 import { Server } from "socket.io";
-import type { ClientToServerEvents, ServerToClientEvents } from "@omi/engine";
-import { IllegalActionError } from "@omi/engine";
+import type { ClientToServerEvents, RuleConfig, ServerToClientEvents } from "@omi/engine";
+import { DEFAULT_RULES, IllegalActionError } from "@omi/engine";
 import { RECONNECT_GRACE_MS, Room } from "./room.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const MAX_NAME_LENGTH = 24;
 const MAX_PASSWORD_LENGTH = 32;
+const MIN_DARE_STAKE = 1;
+const MAX_DARE_STAKE = 1000;
 
 // CORS: accept a comma-separated list so a single env var can cover staging +
 // production frontends. Defaults to localhost for local dev — which is safe
@@ -56,6 +58,21 @@ function sanitizeName(raw: string | undefined): string {
 function sanitizePassword(raw: string | undefined): string | null {
   const trimmed = (raw ?? "").trim().slice(0, MAX_PASSWORD_LENGTH);
   return trimmed || null;
+}
+
+/**
+ * Only forwards the two rule fields a client is actually meant to set
+ * (dareMode, dareBaseStake) — everything else in RuleConfig stays at its
+ * default regardless of what a raw socket client sends. dareBaseStake is
+ * clamped to a sane range since it's arithmetic that flows straight into
+ * every player's coin balance.
+ */
+function sanitizeRules(raw: Partial<RuleConfig> | undefined): Partial<RuleConfig> {
+  const stakeRaw = Number(raw?.dareBaseStake);
+  const dareBaseStake = Number.isFinite(stakeRaw)
+    ? Math.min(MAX_DARE_STAKE, Math.max(MIN_DARE_STAKE, Math.round(stakeRaw)))
+    : DEFAULT_RULES.dareBaseStake;
+  return { dareMode: raw?.dareMode === true, dareBaseStake };
 }
 
 /** Tears down a room's timers and registry entries once nobody is connected to it. */
@@ -112,7 +129,7 @@ io.on("connection", (socket) => {
     const safeName = sanitizeName(name);
     const roomId = randomUUID();
     const joinCode = generateJoinCode();
-    const room = new Room(roomId, joinCode, io, safeName, rules ?? {}, sanitizePassword(password));
+    const room = new Room(roomId, joinCode, io, safeName, sanitizeRules(rules), sanitizePassword(password));
     const seat = room.seats[0];
     seat.socketId = socket.id;
     seat.name = safeName;
@@ -181,6 +198,22 @@ io.on("connection", (socket) => {
     socket.leave(currentRoomId);
     cleanupIfEmpty(room);
     currentRoomId = null;
+  });
+
+  socket.on("room:end", (_payload, ack) => {
+    const room = currentRoomId ? rooms.get(currentRoomId) : undefined;
+    if (!room) {
+      ack({ ok: false, error: "Not in a room" });
+      return;
+    }
+    const ended = room.endSession(socket.id);
+    if (!ended) {
+      ack({ ok: false, error: "Only the host can end the session" });
+      return;
+    }
+    rooms.delete(room.id);
+    joinCodes.delete(room.joinCode);
+    ack({ ok: true });
   });
 
   socket.on("seat:ready", ({ ready }) => {

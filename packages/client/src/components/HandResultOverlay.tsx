@@ -1,5 +1,6 @@
 import type { DareResult, HandResult } from "@omi/engine";
 import { ContinuePrompt } from "./ContinuePrompt.js";
+import { CornerAccent } from "./CornerAccent.js";
 
 function DareRevealBanner({ dare }: { dare: DareResult }) {
   if (dare.cancelled) {
@@ -15,6 +16,12 @@ function DareRevealBanner({ dare }: { dare: DareResult }) {
     ? `🔥 DARE CRUSHED! Team ${winnerLabel} swept it`
     : `🎲 Dare won by Team ${winnerLabel}`;
 
+  // coinsDelta is per-seat, but seats 0/2 (team A) and 1/3 (team B) always
+  // share the same value — collapse to one clear number per team instead of
+  // showing all four (half of them redundant, easy to misread as per-player noise).
+  const teamADelta = dare.coinsDelta[0];
+  const teamBDelta = dare.coinsDelta[1];
+
   return (
     <div className="mb-3">
       <p
@@ -25,6 +32,18 @@ function DareRevealBanner({ dare }: { dare: DareResult }) {
       >
         {headline}
       </p>
+
+      <div className="flex items-center justify-center gap-3 mt-2.5 text-sm font-semibold">
+        <span className={teamADelta >= 0 ? "text-sapphire-300" : "text-ink-dim/60"}>
+          Team A {teamADelta > 0 ? "+" : ""}{teamADelta}
+        </span>
+        <span className="text-ink-dim/30">·</span>
+        <span className={teamBDelta >= 0 ? "text-ruby-300" : "text-ink-dim/60"}>
+          Team B {teamBDelta > 0 ? "+" : ""}{teamBDelta}
+        </span>
+      </div>
+      <p className="text-ink-dim/50 text-xs mt-0.5">coins per player</p>
+
       <div className="flex items-center justify-center gap-2 mt-2 text-xs">
         {dare.streakBonusApplied && (
           <span className="bg-[#c97a2e]/20 text-[#e3a15c] px-2 py-1 rounded-full font-semibold">
@@ -42,7 +61,10 @@ function DareRevealBanner({ dare }: { dare: DareResult }) {
 export function HandResultOverlay({ result, onContinue }: { result: HandResult; onContinue: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="ring-foil bg-felt-800/95 rounded-[1.75rem] p-8 shadow-2xl text-center text-ink min-w-[300px]">
+      <div className="relative ring-foil bg-felt-800/95 rounded-[1.75rem] p-8 shadow-2xl text-center text-ink min-w-[300px]">
+        <CornerAccent className="absolute -top-1 -left-1 w-7 h-7" />
+        <CornerAccent className="absolute -bottom-1 -right-1 w-7 h-7 rotate-180" />
+
         <h2 className="font-display text-2xl font-semibold mb-3">{result.flag ? "🚩 Flag confirmed" : "Hand complete"}</h2>
         {result.flag ? (
           <p className="inline-block bg-ruby-600 text-white font-bold px-4 py-1.5 rounded-full mb-4">
@@ -50,9 +72,9 @@ export function HandResultOverlay({ result, onContinue }: { result: HandResult; 
           </p>
         ) : (
           <p className="text-ink-dim mb-4 text-lg">
-            Tricks <span className="font-bold text-ink">{result.trickCounts[0]}</span>
+            Tricks <span className="font-bold text-sapphire-300">{result.trickCounts[0]}</span>
             <span className="text-ink-dim/40"> – </span>
-            <span className="font-bold text-ink">{result.trickCounts[1]}</span>
+            <span className="font-bold text-ruby-300">{result.trickCounts[1]}</span>
           </p>
         )}
         {result.kapothi && (
@@ -67,26 +89,16 @@ export function HandResultOverlay({ result, onContinue }: { result: HandResult; 
         )}
         {result.dare && <DareRevealBanner dare={result.dare} />}
         <p className="text-ink-dim font-medium">
-          Tokens awarded — A <span className="font-bold text-ink">+{result.tokensAwarded[0]}</span>, B{" "}
-          <span className="font-bold text-ink">+{result.tokensAwarded[1]}</span>
+          Tokens awarded — <span className="font-bold text-sapphire-300">A +{result.tokensAwarded[0]}</span>,{" "}
+          <span className="font-bold text-ruby-300">B +{result.tokensAwarded[1]}</span>
         </p>
-        {result.dare && !result.dare.cancelled && (
-          <p className="text-gold-300/90 text-sm mt-1.5 font-medium">
-            💰{" "}
-            {result.dare.coinsDelta
-              .filter((d) => d !== 0)
-              .map((d) => `${d > 0 ? "+" : ""}${d}`)
-              .join(" / ")}{" "}
-            coins per player
-          </p>
-        )}
         {result.pendingBonusAfter > 0 && (
           <p className="text-gold-300 text-sm mt-2 font-semibold">
             Tie — +{result.pendingBonusAfter} bonus carries to the next hand
           </p>
         )}
         <div className="mt-6">
-          <ContinuePrompt seconds={15} label="Ready for the next hand?" onContinue={onContinue} />
+          <ContinuePrompt seconds={5} label="Ready for the next hand?" onContinue={onContinue} />
         </div>
       </div>
     </div>

@@ -171,9 +171,10 @@ function OpponentBox({
   const accent = TEAM_ACCENT[teamOf(seat)];
   const playerInfo = view.players.find((p) => p.seat === seat);
   const isReconnecting = playerInfo ? !playerInfo.connected : false;
+  const statusText = isReconnecting ? "reconnecting…" : isCaller ? "calling trump…" : isCutter ? "cutting the deck…" : null;
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-1.5">
       <div
         className={[
           "flex items-center gap-2 pl-1 pr-4 py-1 rounded-full text-sm font-semibold transition-all duration-300 max-w-[13rem]",
@@ -203,14 +204,18 @@ function OpponentBox({
           )}
         </span>
         <span className="truncate">{name}</span>
-        {isReconnecting && <span className="text-[10px] font-normal text-gold-300 animate-pulse shrink-0">reconnecting…</span>}
-        {isCaller && <span className="text-[10px] font-normal opacity-80">calling trump…</span>}
-        {isCutter && <span className="text-[10px] font-normal opacity-80">cutting the deck…</span>}
         {view.rules.dareMode && (
           <>
             <span className={["w-px h-3.5", isTurn ? "bg-felt-950/30" : "bg-white/15"].join(" ")} />
             <CoinChip coins={view.coins[seat]} onDark={!isTurn} />
           </>
+        )}
+      </div>
+      <div className="min-h-[1rem] flex items-center">
+        {statusText && (
+          <span className={["text-[10px] font-medium", isReconnecting ? "text-gold-300 animate-pulse" : "text-ink-dim/70"].join(" ")}>
+            {statusText}
+          </span>
         )}
       </div>
       <div className="flex items-center gap-2 min-h-[5rem]">
@@ -225,6 +230,145 @@ function OpponentBox({
   );
 }
 
+function MenuRow({
+  onClick,
+  children,
+  tone = "default",
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  tone?: "default" | "danger";
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-left rounded-lg transition-colors duration-150",
+        tone === "danger" ? "text-ruby-300 hover:bg-ruby-500/10" : "text-ink hover:bg-white/[0.06]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Consolidates the room/help/settings/danger-zone actions that used to sit
+    as separate buttons directly in the header — keeping only the live
+    gameplay pills always visible, with everything else one tap away. */
+function HeaderMenu({
+  view,
+  isHost,
+  codeCopied,
+  linkCopied,
+  onCopyCode,
+  onCopyLink,
+  onOpenHowTo,
+  onOpenRules,
+  confirmEndSession,
+  setConfirmEndSession,
+  onEndSession,
+  confirmLeave,
+  setConfirmLeave,
+  onLeave,
+}: {
+  view: RoomSnapshot;
+  isHost: boolean;
+  codeCopied: boolean;
+  linkCopied: boolean;
+  onCopyCode: () => void;
+  onCopyLink: () => void;
+  onOpenHowTo: () => void;
+  onOpenRules: () => void;
+  confirmEndSession: boolean;
+  setConfirmEndSession: (v: boolean) => void;
+  onEndSession: () => void;
+  confirmLeave: boolean;
+  setConfirmLeave: (v: boolean) => void;
+  onLeave: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function close() {
+    setOpen(false);
+    setConfirmEndSession(false);
+    setConfirmLeave(false);
+  }
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Menu"
+        aria-label="Open menu"
+        className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10 text-ink-dim hover:bg-white/[0.1] hover:text-ink active:scale-95 transition-all duration-150 text-lg leading-none"
+      >
+        ⋯
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="absolute right-0 top-full mt-2 z-50 w-64 max-h-[calc(100vh-5rem)] overflow-y-auto ring-foil bg-felt-800/95 backdrop-blur-md rounded-2xl shadow-2xl p-1.5 text-sm">
+            <div className="px-3.5 py-2 text-[10px] font-bold text-ink-dim/60 uppercase tracking-widest">Invite</div>
+            <MenuRow onClick={onCopyCode}>
+              <span>{view.hasPassword ? "🔒" : "🔗"} Room code</span>
+              <span className="text-ink-dim/70 font-semibold">{codeCopied ? "✓ Copied" : view.joinCode}</span>
+            </MenuRow>
+            <MenuRow onClick={onCopyLink}>
+              <span>Invite link</span>
+              <span className="text-ink-dim/70 font-semibold">{linkCopied ? "✓ Copied" : "Copy"}</span>
+            </MenuRow>
+
+            <div className="h-px bg-white/10 my-1.5" />
+            <MenuRow onClick={() => { onOpenHowTo(); close(); }}>How to Play</MenuRow>
+            <MenuRow onClick={() => { onOpenRules(); close(); }}>Rules</MenuRow>
+
+            <div className="h-px bg-white/10 my-1.5" />
+            <div className="flex items-center justify-between px-3.5 py-2.5">
+              <span className="text-sm font-medium text-ink">Sound</span>
+              <SoundToggle />
+            </div>
+
+            <div className="h-px bg-white/10 my-1.5" />
+            {isHost && (
+              confirmEndSession ? (
+                <div className="flex items-center justify-between gap-2 px-3.5 py-2">
+                  <span className="text-ink-dim/85 text-xs">End for everyone?</span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={onEndSession} className="bg-ruby-600 hover:bg-ruby-500 active:scale-95 text-white text-xs font-bold px-2.5 py-1 rounded-full transition-all duration-150">
+                      Yes
+                    </button>
+                    <button onClick={() => setConfirmEndSession(false)} className="text-ink-dim/85 hover:text-ink text-xs px-1 transition-colors duration-150">
+                      No
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <MenuRow tone="danger" onClick={() => setConfirmEndSession(true)}>End Session (everyone)</MenuRow>
+              )
+            )}
+            {confirmLeave ? (
+              <div className="flex items-center justify-between gap-2 px-3.5 py-2">
+                <span className="text-ink-dim/85 text-xs">Leave game?</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={onLeave} className="bg-ruby-600 hover:bg-ruby-500 active:scale-95 text-white text-xs font-bold px-2.5 py-1 rounded-full transition-all duration-150">
+                    Yes
+                  </button>
+                  <button onClick={() => setConfirmLeave(false)} className="text-ink-dim/85 hover:text-ink text-xs px-1 transition-colors duration-150">
+                    No
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <MenuRow tone="danger" onClick={() => setConfirmLeave(true)}>Leave game</MenuRow>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Table({
   view,
   onPlayCard,
@@ -232,6 +376,7 @@ export function Table({
   onContinue,
   onRaiseFlag,
   onLeave,
+  onEndSession,
 }: {
   view: RoomSnapshot;
   onPlayCard: (card: Card) => void;
@@ -239,6 +384,7 @@ export function Table({
   onContinue: () => void;
   onRaiseFlag: (targetSeat: Seat) => void;
   onLeave: () => void;
+  onEndSession: () => void;
 }) {
   const mySeat = view.mySeat;
   const partner = ((mySeat + 2) % 4) as Seat;
@@ -249,7 +395,9 @@ export function Table({
   const [codeCopied, setCodeCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmEndSession, setConfirmEndSession] = useState(false);
   const isDealer = view.dealerSeat === mySeat;
+  const isHost = mySeat === 0;
 
   function copyJoinCode() {
     const flash = () => {
@@ -359,32 +507,15 @@ export function Table({
         backgroundSize: "auto, 72px 72px",
       }}
     >
-      <header className="flex items-center justify-between flex-wrap gap-y-2 px-5 py-3 bg-felt-900/70 backdrop-blur-md border-b border-gold-400/10 shadow-lg">
-        <div className="flex items-center gap-3 text-sm font-medium text-ink-dim">
-          <span className="font-display">
-            Hand #{view.handNumber} <span className="text-ink-dim/40 font-sans">·</span> Tricks{" "}
-            <span className="text-ink font-bold">{view.trickCounts[0]}</span>
-            <span className="text-ink-dim/40"> – </span>
-            <span className="text-ink font-bold">{view.trickCounts[1]}</span>
-          </span>
-          <button
-            onClick={copyJoinCode}
-            title={view.hasPassword ? "Copy room code to invite friends (password-protected)" : "Copy room code to invite friends"}
-            aria-label="Copy room code"
-            className="flex items-center gap-1.5 bg-white/[0.06] ring-1 ring-gold-400/15 hover:bg-white/[0.1] active:scale-95 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider transition-all duration-150"
-          >
-            {codeCopied ? "✓ Copied" : `${view.hasPassword ? "🔒" : "🔗"} ${view.joinCode}`}
-          </button>
-          <button
-            onClick={copyJoinLink}
-            title="Copy a shareable invite link"
-            aria-label="Copy invite link"
-            className="flex items-center gap-1.5 bg-white/[0.06] ring-1 ring-gold-400/15 hover:bg-white/[0.1] active:scale-95 px-2.5 py-1 rounded-full text-xs font-semibold transition-all duration-150"
-          >
-            {linkCopied ? "✓ Copied" : "Copy link"}
-          </button>
-        </div>
-        <div className="flex items-center gap-3 text-sm flex-wrap">
+      <header className="flex items-center gap-3 px-5 py-3 bg-felt-900/70 backdrop-blur-md border-b border-gold-400/10 shadow-lg">
+        <span className="font-display text-sm font-medium text-ink-dim shrink-0">
+          Hand #{view.handNumber} <span className="text-ink-dim/40 font-sans">·</span> Tricks{" "}
+          <span className="text-ink font-bold">{view.trickCounts[0]}</span>
+          <span className="text-ink-dim/40"> – </span>
+          <span className="text-ink font-bold">{view.trickCounts[1]}</span>
+        </span>
+
+        <div className="flex-1 flex items-center gap-2 text-sm flex-wrap justify-end min-w-0">
           <span className="flex items-center gap-2 bg-white/[0.06] ring-1 ring-white/10 px-3 py-1.5 rounded-full font-semibold">
             <span className={TEAM_ACCENT[0].text}>A</span> {view.tokens[0]}
             <span className="text-ink-dim/30">/</span>
@@ -418,31 +549,24 @@ export function Table({
               Declare Slam ⚡
             </button>
           )}
-          <span className="w-px h-4 bg-gold-400/15" />
-          <button onClick={() => setModalTab("howto")} className="text-ink-dim/85 hover:text-gold-300 font-medium transition-colors duration-150">
-            How to Play
-          </button>
-          <button onClick={() => setModalTab("rules")} className="text-ink-dim/85 hover:text-gold-300 font-medium transition-colors duration-150">
-            Rules
-          </button>
-          <span className="w-px h-4 bg-gold-400/15" />
-          <SoundToggle />
-          {confirmLeave ? (
-            <span className="flex items-center gap-1.5">
-              <span className="text-ink-dim/85 text-xs">Leave game?</span>
-              <button onClick={onLeave} className="bg-ruby-600 hover:bg-ruby-500 active:scale-95 text-white text-xs font-bold px-2.5 py-1 rounded-full transition-all duration-150">
-                Yes
-              </button>
-              <button onClick={() => setConfirmLeave(false)} className="text-ink-dim/85 hover:text-ink text-xs px-1 transition-colors duration-150">
-                No
-              </button>
-            </span>
-          ) : (
-            <button onClick={() => setConfirmLeave(true)} title="Leave game" aria-label="Leave game" className="text-ink-dim/85 hover:text-ruby-300 transition-colors duration-150">
-              🚪
-            </button>
-          )}
         </div>
+
+        <HeaderMenu
+          view={view}
+          isHost={isHost}
+          codeCopied={codeCopied}
+          linkCopied={linkCopied}
+          onCopyCode={copyJoinCode}
+          onCopyLink={copyJoinLink}
+          onOpenHowTo={() => setModalTab("howto")}
+          onOpenRules={() => setModalTab("rules")}
+          confirmEndSession={confirmEndSession}
+          setConfirmEndSession={setConfirmEndSession}
+          onEndSession={onEndSession}
+          confirmLeave={confirmLeave}
+          setConfirmLeave={setConfirmLeave}
+          onLeave={onLeave}
+        />
       </header>
 
       {modalTab && <RulesModal initialTab={modalTab} onClose={() => setModalTab(null)} />}
@@ -560,7 +684,7 @@ export function Table({
           <div className="min-h-[1.5rem] flex items-center">
             {view.phase === "TRICK_RESOLVED" && view.lastTrick ? (
               <ContinuePrompt
-                seconds={15}
+                seconds={5}
                 label={`${seatLabel(view, view.lastTrick.winnerSeat)} won the trick`}
                 onContinue={onContinue}
                 compact

@@ -27,7 +27,7 @@ const TURN_TIMEOUT_MS = 20_000;
 /** Deliberately slow so players can follow each bot action. */
 const BOT_MOVE_DELAY_MS = 1_700;
 /** Grace period after a trick or a hand before the game auto-advances. */
-const ROUND_GRACE_MS = 15_000;
+const ROUND_GRACE_MS = 5_000;
 /** How long a disconnected human's seat stays reclaimable (and the room kept
     alive for them) before the room is treated as genuinely abandoned. */
 export const RECONNECT_GRACE_MS = 60_000;
@@ -382,6 +382,16 @@ export class Room {
     if (!seat) return;
     seat.rejoinToken = null;
     this.disconnectSocket(socketId);
+  }
+
+  /** Host-only (current occupant of seat 0): ends the game immediately for
+      everyone still connected, then marks the room dead. */
+  endSession(socketId: string): boolean {
+    const seat = this.seatBySocket(socketId);
+    if (!seat || seat.seat !== 0) return false;
+    this.io.to(this.id).emit("room:ended", { reason: "The host ended this game." });
+    this.destroy();
+    return true;
   }
 
   /**

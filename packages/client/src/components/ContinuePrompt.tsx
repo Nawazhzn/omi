@@ -25,13 +25,13 @@ export function ContinuePrompt({
 
   if (compact) {
     return (
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-2.5 text-xs">
         <span className="text-ink-dim/75 font-medium">{label}</span>
         <button
           onClick={onContinue}
-          className="text-gold-300/90 font-semibold hover:text-gold-200 active:opacity-70 transition-colors duration-150"
+          className="shine-surface bg-gradient-to-b from-gold-300 to-gold-500 text-felt-950 font-bold px-4 py-1.5 rounded-full shadow-[0_4px_14px_-4px_rgba(227,189,93,0.6)] hover:scale-105 hover:brightness-105 active:scale-95 transition-all duration-150 ease-out"
         >
-          Continue · {remaining}s
+          Continue <span className="opacity-70 font-semibold">· {remaining}s</span>
         </button>
       </div>
     );

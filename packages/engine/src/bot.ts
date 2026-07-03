@@ -29,6 +29,14 @@ export function chooseBotCard(state: GameState, seat: Seat): Card {
   const trump = state.trumpSuit;
   const winningSeatCard = currentWinner(state.currentTrick, leadSuit, trump);
 
+  // A teammate already has this trick won — the team gets credit for it
+  // regardless of whose card is highest, so there's nothing to gain (and a
+  // trump potentially wasted) by trying to improve on our own side's lead.
+  const teammateWinning = winningSeatCard.seat % 2 === seat % 2;
+  if (teammateWinning) {
+    return lowestCard(legal);
+  }
+
   const beatsCurrentWinner = legal.filter((c) => beats(c, winningSeatCard.card, leadSuit, trump));
   if (beatsCurrentWinner.length > 0) {
     return lowestCard(beatsCurrentWinner);

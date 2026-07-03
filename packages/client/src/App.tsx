@@ -41,11 +41,21 @@ export default function App() {
       });
     });
     socket.on("disconnect", () => setServerDisconnected(true));
+    // Broadcast to every seat (including the host's own socket) when the host
+    // ends the session early — everyone lands back on Home with the same message.
+    socket.on("room:ended", (payload) => {
+      clearMembership();
+      prevPhaseRef.current = null;
+      setDealBatch(null);
+      setView(null);
+      showError(payload.reason);
+    });
     return () => {
       socket.off("state:sync");
       socket.off("error");
       socket.off("connect");
       socket.off("disconnect");
+      socket.off("room:ended");
     };
   }, []);
 
@@ -103,9 +113,9 @@ export default function App() {
   }
 
   /** Create a room and immediately mark ready — bots fill remaining seats and game starts. */
-  function playVsBots(name: string, dareMode: boolean, password: string) {
+  function playVsBots(name: string, dareMode: boolean, password: string, dareStake: number) {
     setError(null);
-    socket.emit("room:create", { name, rules: { dareMode }, password: password || undefined }, (res) => {
+    socket.emit("room:create", { name, rules: { dareMode, dareBaseStake: dareStake }, password: password || undefined }, (res) => {
       if (!res.ok) { showError(res.error); return; }
       saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
       socket.emit("seat:ready", { ready: true });
@@ -113,9 +123,9 @@ export default function App() {
   }
 
   /** Create a room WITHOUT auto-readying — stays in LOBBY so friends can join via code. */
-  function createRoom(name: string, dareMode: boolean, password: string) {
+  function createRoom(name: string, dareMode: boolean, password: string, dareStake: number) {
     setError(null);
-    socket.emit("room:create", { name, rules: { dareMode }, password: password || undefined }, (res) => {
+    socket.emit("room:create", { name, rules: { dareMode, dareBaseStake: dareStake }, password: password || undefined }, (res) => {
       if (!res.ok) { showError(res.error); return; }
       saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
       // No seat:ready — show lobby and wait for humans
@@ -143,6 +153,15 @@ export default function App() {
     prevPhaseRef.current = null;
     setDealBatch(null);
     setView(null);
+  }
+
+  /** Host-only: ends the game for everyone. The actual navigation back to
+      Home happens uniformly for all players (including the host) via the
+      room:ended broadcast handler above, not here. */
+  function endSession() {
+    socket.emit("room:end", {}, (res) => {
+      if (!res.ok) showError(res.error);
+    });
   }
 
   function playCard(card: Card) {
@@ -213,7 +232,7 @@ export default function App() {
     return (
       <>
         {reconnectBanner}
-        <Lobby view={view} onReady={toggleReady} onLeave={goHome} />
+        <Lobby view={view} onReady={toggleReady} onLeave={goHome} onEndSession={endSession} />
       </>
     );
   }
@@ -229,7 +248,7 @@ export default function App() {
 
   return (
     <div className="relative">
-      <Table view={view} onPlayCard={playCard} onDeclareSlam={declareSlam} onContinue={continueRound} onRaiseFlag={raiseFlag} onLeave={goHome} />
+      <Table view={view} onPlayCard={playCard} onDeclareSlam={declareSlam} onContinue={continueRound} onRaiseFlag={raiseFlag} onLeave={goHome} onEndSession={endSession} />
 
       {view.phase === "AWAIT_CUT" && isCutter && <CutDeckModal onCut={cutDeck} />}
 

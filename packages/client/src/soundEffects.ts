@@ -51,6 +51,13 @@ export function playYourTurnSound() {
   setTimeout(() => playTone(660, 160, 0.06), 80);
 }
 
+/** A short ascending fanfare for winning the full game. */
+export function playVictorySound() {
+  if (!isSoundEnabled()) return;
+  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+  notes.forEach((freq, i) => setTimeout(() => playTone(freq, 260, 0.07, "triangle"), i * 110));
+}
+
 /** Short haptic pulse for the same "your turn" / "trick won" moments — tied to
     the sound toggle since this app doesn't expose a separate haptics setting. */
 export function vibrate(pattern: number | number[]) {

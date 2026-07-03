@@ -15,13 +15,17 @@ export function Lobby({
   view,
   onReady,
   onLeave,
+  onEndSession,
 }: {
   view: RoomSnapshot;
   onReady: (ready: boolean) => void;
   onLeave: () => void;
+  onEndSession: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [confirmEndSession, setConfirmEndSession] = useState(false);
+  const isHost = view.mySeat === 0;
 
   const me = view.players.find((p) => p.seat === view.mySeat);
   const isReady = me?.ready ?? false;
@@ -177,6 +181,27 @@ export function Lobby({
         >
           Leave room
         </button>
+
+        {isHost && (
+          confirmEndSession ? (
+            <div className="flex items-center justify-center gap-2 mt-1">
+              <span className="text-ink-dim/85 text-xs">End this room for everyone?</span>
+              <button onClick={onEndSession} className="bg-ruby-600 hover:bg-ruby-500 active:scale-95 text-white text-xs font-bold px-2.5 py-1 rounded-full transition-all duration-150">
+                Yes
+              </button>
+              <button onClick={() => setConfirmEndSession(false)} className="text-ink-dim/85 hover:text-ink text-xs px-1 transition-colors duration-150">
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmEndSession(true)}
+              className="w-full text-xs text-ink-dim/50 hover:text-ruby-300 transition-colors duration-150 py-1 mt-1"
+            >
+              End room for everyone
+            </button>
+          )
+        )}
       </div>
     </div>
   );
