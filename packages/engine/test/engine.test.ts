@@ -402,6 +402,34 @@ describe("win condition and dealer rotation", () => {
     expect(state.phase).toBe("AWAIT_CUT");
     expect(state.dealerSeat).toBe(nextSeat(0));
   });
+
+  it("ends the game at the round cap even below the token target, giving it to the token leader", () => {
+    // Round cap of 1, unreachable token target: the game must end after hand 1.
+    let state = freshHandState({ maxRounds: 1, targetTokens: 100 });
+    const caller = state.trumpCallerSeat;
+    state = callDefaultTrump(state);
+    state = playHandWithWinners(state, Array(8).fill(caller)); // caller's team sweeps -> more tokens
+    expect(state.phase).toBe("GAME_OVER");
+    expect(state.winningTeam).toBe(caller % 2);
+  });
+
+  it("declares a draw when the round cap is hit with tokens tied", () => {
+    // A 4-4 hand awards no tokens, so at the cap both teams sit at 0 -> draw.
+    let state = freshHandState({ maxRounds: 1, targetTokens: 100 });
+    state = callDefaultTrump(state);
+    state = playHandWithWinners(state, [0, 0, 0, 0, 1, 1, 1, 1] as Seat[]);
+    expect(state.phase).toBe("GAME_OVER");
+    expect(state.winningTeam).toBeNull();
+  });
+
+  it("does not end early when maxRounds is 0 (unlimited)", () => {
+    let state = freshHandState({ maxRounds: 0, targetTokens: 100 });
+    const caller = state.trumpCallerSeat;
+    state = callDefaultTrump(state);
+    state = playHandWithWinners(state, Array(8).fill(caller));
+    expect(state.phase).toBe("HAND_SCORING");
+    expect(state.winningTeam).toBeNull();
+  });
 });
 
 describe("view redaction (security)", () => {

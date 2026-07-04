@@ -124,6 +124,18 @@ body,
   100% { transform: translate3d(var(--x, 0), 110vh, 0) rotate(var(--r, 360deg)); opacity: 0.85; }
 }
 
+/* Round-intro flash: fade+scale in, hold, fade out over its full ~2.2s life
+   (App unmounts it when the timer fires, so no exit transition is needed). */
+@keyframes round-intro {
+  0% { opacity: 0; transform: scale(0.92); }
+  14% { opacity: 1; transform: scale(1); }
+  78% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+.animate-round-intro {
+  animation: round-intro 2200ms ease-in-out both;
+}
+
 /* Staggered rise-in for lobby/home content — set --delay per child. */
 @keyframes rise-in {
   from {

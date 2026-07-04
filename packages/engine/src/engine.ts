@@ -63,6 +63,29 @@ export function createInitialState(rules: Partial<RuleConfig> = {}, dealerSeat: 
 }
 
 /**
+ * Decides whether the game ends after the hand that was just scored, given the
+ * updated team token totals. The game ends when either a team reaches
+ * targetTokens, OR (when maxRounds > 0) the round cap is reached — in which
+ * case the team with more tokens wins, or it's a draw (winningTeam: null) on a
+ * tie. Returns the phase to enter and the resulting winner.
+ */
+function decideGameEnd(
+  state: GameState,
+  tokens: [number, number]
+): { phase: "GAME_OVER" | "HAND_SCORING"; winningTeam: Team | null } {
+  const target = state.rules.targetTokens;
+  const tokenWinner: Team | null = tokens[0] >= target ? 0 : tokens[1] >= target ? 1 : null;
+  if (tokenWinner !== null) return { phase: "GAME_OVER", winningTeam: tokenWinner };
+
+  const maxRounds = state.rules.maxRounds;
+  if (maxRounds > 0 && state.handNumber >= maxRounds) {
+    const roundWinner: Team | null = tokens[0] > tokens[1] ? 0 : tokens[1] > tokens[0] ? 1 : null;
+    return { phase: "GAME_OVER", winningTeam: roundWinner };
+  }
+  return { phase: "HAND_SCORING", winningTeam: null };
+}
+
+/**
  * Begins a new hand: shuffles the deck and awaits the cut from the seat to
  * the dealer's left, before any cards are dealt. The trump caller (dealer's
  * right) is a different seat and only acts once batch 1 has been dealt.
@@ -429,8 +452,7 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
     dare: cancelledDare,
   };
 
-  const target = state.rules.targetTokens;
-  const winningTeam: Team | null = tokens[0] >= target ? 0 : tokens[1] >= target ? 1 : null;
+  const outcome = decideGameEnd(state, tokens);
 
   return {
     state: {
@@ -440,8 +462,8 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
       currentTrick: [],
       currentTurnSeat: null,
       lastHandResult: result,
-      phase: winningTeam !== null ? "GAME_OVER" : "HAND_SCORING",
-      winningTeam,
+      phase: outcome.phase,
+      winningTeam: outcome.winningTeam,
     },
     correct: true,
   };
@@ -633,18 +655,17 @@ export function scoreHand(state: GameState): GameState {
     dare: dareResult,
   };
 
-  const target = state.rules.targetTokens;
-  const winningTeam: Team | null = tokens[0] >= target ? 0 : tokens[1] >= target ? 1 : null;
+  const outcome = decideGameEnd(state, tokens);
 
   return {
     ...state,
-    phase: winningTeam !== null ? "GAME_OVER" : "HAND_SCORING",
+    phase: outcome.phase,
     tokens,
     pendingBonus: pendingBonusAfter,
     coins,
     dareStreak,
     lastHandResult: result,
-    winningTeam,
+    winningTeam: outcome.winningTeam,
   };
 }
 

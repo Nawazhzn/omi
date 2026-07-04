@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Card, RoomSnapshot, Seat, Suit } from "@omi/engine";
 import { socket } from "./socket.js";
+import { getPlayerId } from "./playerId.js";
 import { playCardSound, playTrickWonSound, playYourTurnSound, vibrate } from "./soundEffects.js";
 import { clearMembership, readMembership, saveMembership } from "./sessionMembership.js";
 import { Home } from "./components/Home.js";
@@ -13,6 +14,17 @@ import { HandResultOverlay } from "./components/HandResultOverlay.js";
 import { GameOverScreen } from "./components/GameOverScreen.js";
 import { DareChallengeModal } from "./components/DareChallengeModal.js";
 import { DareResponseModal } from "./components/DareResponseModal.js";
+import { RoundIntroOverlay } from "./components/RoundIntroOverlay.js";
+
+/** Host-chosen room settings collected on the Home screen. */
+export interface CreateSettings {
+  name: string;
+  dareMode: boolean;
+  dareStake: number;
+  password: string;
+  targetTokens: number;
+  maxRounds: number;
+}
 
 export default function App() {
   const [view, setView] = useState<RoomSnapshot | null>(null);
@@ -20,9 +32,24 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [dealBatch, setDealBatch] = useState<1 | 2 | null>(null);
   const [serverDisconnected, setServerDisconnected] = useState(false);
+  const [roundIntro, setRoundIntro] = useState<number | null>(null);
   const prevPhaseRef = useRef<RoomSnapshot["phase"] | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSnapshotRef = useRef<{ trickLen: number; phase: RoomSnapshot["phase"]; isMyTurn: boolean } | null>(null);
+  const lastShownRoundRef = useRef<number | null>(null);
+  const roundIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showRoundIntro(round: number) {
+    setRoundIntro(round);
+    if (roundIntroTimerRef.current) clearTimeout(roundIntroTimerRef.current);
+    roundIntroTimerRef.current = setTimeout(() => setRoundIntro(null), 2200);
+  }
+
+  function resetRoundIntro() {
+    if (roundIntroTimerRef.current) clearTimeout(roundIntroTimerRef.current);
+    lastShownRoundRef.current = null;
+    setRoundIntro(null);
+  }
 
   useEffect(() => {
     socket.connect();
@@ -47,6 +74,7 @@ export default function App() {
       clearMembership();
       prevPhaseRef.current = null;
       setDealBatch(null);
+      resetRoundIntro();
       setView(null);
       showError(payload.reason);
     });
@@ -70,6 +98,18 @@ export default function App() {
     }
     prevPhaseRef.current = view.phase;
   }, [view?.phase]);
+
+  // A new hand always begins in AWAIT_CUT — that's the one moment per round to
+  // flash the big "Round X of Y" intro. Keying off handNumber (not just phase)
+  // makes it fire once per round and never on a mid-hand reconnect (which lands
+  // in some other phase).
+  useEffect(() => {
+    if (!view || view.phase !== "AWAIT_CUT") return;
+    if (view.handNumber === lastShownRoundRef.current) return;
+    lastShownRoundRef.current = view.handNumber;
+    showRoundIntro(view.handNumber);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view?.phase, view?.handNumber]);
 
   // Tab title pings whenever it's this player's turn to act, so a backgrounded
   // tab is noticeable instead of silently running out the auto-play timer.
@@ -112,29 +152,40 @@ export default function App() {
     errorTimerRef.current = setTimeout(() => setError(null), 5000);
   }
 
-  /** Create a room and immediately mark ready — bots fill remaining seats and game starts. */
-  function playVsBots(name: string, dareMode: boolean, password: string, dareStake: number) {
+  /** Emits room:create with the host's chosen settings and remembers the seat. */
+  function emitCreate(s: CreateSettings, onCreated: () => void) {
     setError(null);
-    socket.emit("room:create", { name, rules: { dareMode, dareBaseStake: dareStake }, password: password || undefined }, (res) => {
-      if (!res.ok) { showError(res.error); return; }
-      saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
-      socket.emit("seat:ready", { ready: true });
-    });
+    socket.emit(
+      "room:create",
+      {
+        name: s.name,
+        rules: { dareMode: s.dareMode, dareBaseStake: s.dareStake, targetTokens: s.targetTokens, maxRounds: s.maxRounds },
+        password: s.password || undefined,
+        playerId: getPlayerId(),
+      },
+      (res) => {
+        if (!res.ok) { showError(res.error); return; }
+        saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
+        onCreated();
+      }
+    );
+  }
+
+  /** Create a room and immediately mark ready — bots fill remaining seats and game starts. */
+  function playVsBots(s: CreateSettings) {
+    emitCreate(s, () => socket.emit("seat:ready", { ready: true }));
   }
 
   /** Create a room WITHOUT auto-readying — stays in LOBBY so friends can join via code. */
-  function createRoom(name: string, dareMode: boolean, password: string, dareStake: number) {
-    setError(null);
-    socket.emit("room:create", { name, rules: { dareMode, dareBaseStake: dareStake }, password: password || undefined }, (res) => {
-      if (!res.ok) { showError(res.error); return; }
-      saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
+  function createRoom(s: CreateSettings) {
+    emitCreate(s, () => {
       // No seat:ready — show lobby and wait for humans
     });
   }
 
   function joinRoom(name: string, joinCode: string, password: string) {
     setError(null);
-    socket.emit("room:join", { joinCode, name, password: password || undefined }, (res) => {
+    socket.emit("room:join", { joinCode, name, password: password || undefined, playerId: getPlayerId() }, (res) => {
       if (!res.ok) { showError(res.error); return; }
       saveMembership({ roomId: res.roomId, seat: res.seat, rejoinToken: res.rejoinToken });
       // state:sync fires next — if phase is LOBBY we show the lobby and let the
@@ -152,6 +203,7 @@ export default function App() {
     clearMembership();
     prevPhaseRef.current = null;
     setDealBatch(null);
+    resetRoundIntro();
     setView(null);
   }
 
@@ -281,7 +333,7 @@ export default function App() {
         <HandResultOverlay result={view.lastHandResult} onContinue={continueRound} />
       )}
 
-      {view.phase === "GAME_OVER" && view.winningTeam !== null && (
+      {view.phase === "GAME_OVER" && (
         <GameOverScreen
           winningTeam={view.winningTeam}
           tokens={view.tokens}
@@ -289,6 +341,8 @@ export default function App() {
           onHome={goHome}
         />
       )}
+
+      {roundIntro !== null && <RoundIntroOverlay round={roundIntro} maxRounds={view.rules.maxRounds} />}
 
       {reconnectBanner}
 

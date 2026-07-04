@@ -60,19 +60,34 @@ function sanitizePassword(raw: string | undefined): string | null {
   return trimmed || null;
 }
 
+/** Private per-browser identity used only for reclaiming one's own seat — cap the size, never trust structure. */
+function sanitizePlayerId(raw: string | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed && trimmed.length <= 64 ? trimmed : null;
+}
+
+/** Clamps a client-supplied integer rule to [min, max], falling back to a default when it isn't a finite number. */
+function clampRule(raw: unknown, fallback: number, min: number, max: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 /**
- * Only forwards the two rule fields a client is actually meant to set
- * (dareMode, dareBaseStake) — everything else in RuleConfig stays at its
- * default regardless of what a raw socket client sends. dareBaseStake is
- * clamped to a sane range since it's arithmetic that flows straight into
- * every player's coin balance.
+ * Only forwards the rule fields a client is actually meant to set (dareMode,
+ * dareBaseStake, targetTokens, maxRounds) — everything else in RuleConfig
+ * stays at its default regardless of what a raw socket client sends. All
+ * numeric fields are clamped to sane ranges since they flow straight into
+ * scoring and coin arithmetic.
  */
 function sanitizeRules(raw: Partial<RuleConfig> | undefined): Partial<RuleConfig> {
-  const stakeRaw = Number(raw?.dareBaseStake);
-  const dareBaseStake = Number.isFinite(stakeRaw)
-    ? Math.min(MAX_DARE_STAKE, Math.max(MIN_DARE_STAKE, Math.round(stakeRaw)))
-    : DEFAULT_RULES.dareBaseStake;
-  return { dareMode: raw?.dareMode === true, dareBaseStake };
+  return {
+    dareMode: raw?.dareMode === true,
+    dareBaseStake: clampRule(raw?.dareBaseStake, DEFAULT_RULES.dareBaseStake, MIN_DARE_STAKE, MAX_DARE_STAKE),
+    targetTokens: clampRule(raw?.targetTokens, DEFAULT_RULES.targetTokens, 1, 100),
+    maxRounds: clampRule(raw?.maxRounds, DEFAULT_RULES.maxRounds, 0, 100), // 0 = unlimited
+  };
 }
 
 /** Tears down a room's timers and registry entries once nobody is connected to it. */
@@ -121,7 +136,7 @@ function clientIp(socket: { handshake: { address: string } }): string {
 io.on("connection", (socket) => {
   let currentRoomId: string | null = null;
 
-  socket.on("room:create", ({ name, rules, password }, ack) => {
+  socket.on("room:create", ({ name, rules, password, playerId }, ack) => {
     if (!createLimiter.attempt(clientIp(socket))) {
       ack({ ok: false, error: "Too many rooms created recently — please wait a few minutes and try again" });
       return;
@@ -135,6 +150,7 @@ io.on("connection", (socket) => {
     seat.name = safeName;
     seat.isBot = false;
     seat.connected = true;
+    seat.playerId = sanitizePlayerId(playerId);
 
     rooms.set(roomId, room);
     joinCodes.set(joinCode, roomId);
@@ -144,7 +160,7 @@ io.on("connection", (socket) => {
     room.broadcast();
   });
 
-  socket.on("room:join", ({ joinCode, name, password }, ack) => {
+  socket.on("room:join", ({ joinCode, name, password, playerId }, ack) => {
     if (!joinLimiter.attempt(clientIp(socket))) {
       ack({ ok: false, error: "Too many attempts — please wait a few minutes and try again" });
       return;
@@ -159,7 +175,7 @@ io.on("connection", (socket) => {
       ack({ ok: false, error: "Incorrect password" });
       return;
     }
-    const seat = room.claimSeatForSocket(socket.id, sanitizeName(name));
+    const seat = room.claimSeatForSocket(socket.id, sanitizeName(name), sanitizePlayerId(playerId));
     if (!seat) {
       ack({ ok: false, error: "Room is full" });
       return;

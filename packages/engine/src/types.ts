@@ -100,7 +100,11 @@ export interface PublicResolvedTrick {
 }
 
 export interface RuleConfig {
+  /** Tokens a team must reach to win the game. */
   targetTokens: number;
+  /** Hard cap on hands played; the game ends after this many rounds even if
+      no team has hit targetTokens (winner = more tokens, tie = draw). 0 = no cap. */
+  maxRounds: number;
   slamHouseRule: boolean;
   /** When true, illegal (non-following) plays are blocked outright instead of being left to flag challenges. */
   strictFollowSuit: boolean;
@@ -116,6 +120,7 @@ export interface RuleConfig {
 
 export const DEFAULT_RULES: RuleConfig = {
   targetTokens: 10,
+  maxRounds: 0,
   slamHouseRule: false,
   strictFollowSuit: false,
   flagsPerTeam: 3,

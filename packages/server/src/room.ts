@@ -42,6 +42,10 @@ export interface SeatInfo {
   /** Private per-seat secret handed to the occupying client, used to reclaim
       this seat after a refresh or dropped connection. Never broadcast. */
   rejoinToken: string | null;
+  /** Stable per-browser id supplied at claim time — lets a returning player
+      be recognised on a plain room:join (new tab, re-typed code) and get
+      their original seat back instead of a duplicate one. Never broadcast. */
+  playerId: string | null;
   /** Timestamp of the last disconnect, used to bound how long a seat stays
       reclaimable. Null while connected or never yet claimed by a human. */
   disconnectedAt: number | null;
@@ -75,10 +79,10 @@ export class Room {
     this.password = password;
     this.io = io;
     this.seats = [
-      { seat: 0, socketId: null, name: hostName, isBot: false, connected: true, ready: false, rejoinToken: randomUUID(), disconnectedAt: null },
-      { seat: 1, socketId: null, name: "Bot East", isBot: true, connected: true, ready: true, rejoinToken: null, disconnectedAt: null },
-      { seat: 2, socketId: null, name: "Bot North", isBot: true, connected: true, ready: true, rejoinToken: null, disconnectedAt: null },
-      { seat: 3, socketId: null, name: "Bot West", isBot: true, connected: true, ready: true, rejoinToken: null, disconnectedAt: null },
+      { seat: 0, socketId: null, name: hostName, isBot: false, connected: true, ready: false, rejoinToken: randomUUID(), playerId: null, disconnectedAt: null },
+      { seat: 1, socketId: null, name: "Bot East", isBot: true, connected: true, ready: true, rejoinToken: null, playerId: null, disconnectedAt: null },
+      { seat: 2, socketId: null, name: "Bot North", isBot: true, connected: true, ready: true, rejoinToken: null, playerId: null, disconnectedAt: null },
+      { seat: 3, socketId: null, name: "Bot West", isBot: true, connected: true, ready: true, rejoinToken: null, playerId: null, disconnectedAt: null },
     ];
     this.state = createInitialState(rules, 0);
   }
@@ -93,17 +97,53 @@ export class Room {
     return this.seats.find((s) => s.socketId === socketId);
   }
 
-  claimSeatForSocket(socketId: string, name: string): SeatInfo | null {
-    const botSeat = this.seats.find((s) => s.isBot);
-    if (!botSeat) return null;
-    botSeat.socketId = socketId;
-    botSeat.name = name;
-    botSeat.isBot = false;
-    botSeat.connected = true;
-    botSeat.ready = false;
-    botSeat.rejoinToken = randomUUID();
-    botSeat.disconnectedAt = null;
-    return botSeat;
+  /**
+   * Force-disconnects a stale socket still bound to a seat that's being
+   * (re)claimed by a newer connection. Covers the "zombie connection" case:
+   * the player's old tab/network path half-died, the server hasn't hit its
+   * ping timeout yet, and without the kick the old binding would linger and
+   * fight the new one. A server-initiated disconnect arrives client-side as
+   * "io server disconnect", which socket.io does NOT auto-reconnect from —
+   * so the stale tab can't steal the seat back in a loop.
+   */
+  private kickSocket(oldSocketId: string | null, newSocketId: string) {
+    if (!oldSocketId || oldSocketId === newSocketId) return;
+    this.io.sockets.sockets.get(oldSocketId)?.disconnect(true);
+  }
+
+  /**
+   * Seats a joining player, preferring in order:
+   *  1. their OWN previous seat (matched by private playerId) — whether it's
+   *     currently bot-controlled after a disconnect or still bound to a
+   *     zombie connection. This is what stops a reconnecting player from
+   *     being seated twice, leaving a "ghost" of themselves behind.
+   *  2. a never-claimed pure bot seat,
+   *  3. a formerly-human seat whose reconnect grace expired,
+   *  4. any bot-controlled seat (last resort — may take a within-grace seat
+   *     rather than reject the join outright).
+   */
+  claimSeatForSocket(socketId: string, name: string, playerId: string | null): SeatInfo | null {
+    const now = Date.now();
+    const own = playerId ? this.seats.find((s) => s.playerId === playerId) : undefined;
+    const fresh = this.seats.find((s) => s.isBot && s.rejoinToken === null);
+    const expired = this.seats.find(
+      (s) => s.isBot && s.rejoinToken !== null && (s.disconnectedAt === null || now - s.disconnectedAt >= RECONNECT_GRACE_MS)
+    );
+    const anyBot = this.seats.find((s) => s.isBot);
+    const seat = own ?? fresh ?? expired ?? anyBot;
+    if (!seat) return null;
+
+    this.kickSocket(seat.socketId, socketId);
+    seat.socketId = socketId;
+    seat.name = name;
+    seat.isBot = false;
+    seat.connected = true;
+    // A returning player keeps their ready state; a genuinely new occupant starts unready.
+    if (!own) seat.ready = false;
+    seat.rejoinToken = randomUUID();
+    seat.playerId = playerId;
+    seat.disconnectedAt = null;
+    return seat;
   }
 
   /**
@@ -114,8 +154,11 @@ export class Room {
    * happens to be open.
    */
   reclaimSeat(socketId: string, seat: Seat, token: string): SeatInfo | null {
-    const seatInfo = this.seats[seat];
-    if (!seatInfo.rejoinToken || seatInfo.rejoinToken !== token) return null;
+    // Client-supplied index: validate before use, or a raw socket sending
+    // seat: 99 would throw inside the handler and crash the process.
+    const seatInfo = Number.isInteger(seat) && seat >= 0 && seat < 4 ? this.seats[seat] : undefined;
+    if (!seatInfo || !seatInfo.rejoinToken || seatInfo.rejoinToken !== token) return null;
+    this.kickSocket(seatInfo.socketId, socketId);
     seatInfo.socketId = socketId;
     seatInfo.isBot = false;
     seatInfo.connected = true;
@@ -381,6 +424,10 @@ export class Room {
     const seat = this.seatBySocket(socketId);
     if (!seat) return;
     seat.rejoinToken = null;
+    // Also forget the identity — an explicit leave means a later join from
+    // the same browser should be treated as a brand-new player, not routed
+    // back into this seat.
+    seat.playerId = null;
     this.disconnectSocket(socketId);
   }
 

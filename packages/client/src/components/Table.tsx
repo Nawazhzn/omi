@@ -509,7 +509,8 @@ export function Table({
     >
       <header className="flex items-center gap-3 px-5 py-3 bg-felt-900/70 backdrop-blur-md border-b border-gold-400/10 shadow-lg">
         <span className="font-display text-sm font-medium text-ink-dim shrink-0">
-          Hand #{view.handNumber} <span className="text-ink-dim/40 font-sans">·</span> Tricks{" "}
+          Round {view.handNumber}{view.rules.maxRounds > 0 ? ` / ${view.rules.maxRounds}` : ""}{" "}
+          <span className="text-ink-dim/40 font-sans">·</span> Tricks{" "}
           <span className="text-ink font-bold">{view.trickCounts[0]}</span>
           <span className="text-ink-dim/40"> – </span>
           <span className="text-ink font-bold">{view.trickCounts[1]}</span>

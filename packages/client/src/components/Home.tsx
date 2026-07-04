@@ -4,6 +4,23 @@ import { CornerAccent } from "./CornerAccent.js";
 import { RulesModal } from "./RulesModal.js";
 
 const STAKE_OPTIONS = [10, 25, 50, 100];
+const TOKEN_OPTIONS = [5, 10, 15, 21];
+/** value 0 = no round cap (play until a team hits the token target). */
+const ROUND_OPTIONS: { label: string; value: number }[] = [
+  { label: "5", value: 5 },
+  { label: "10", value: 10 },
+  { label: "15", value: 15 },
+  { label: "∞", value: 0 },
+];
+
+export interface CreateSettings {
+  name: string;
+  dareMode: boolean;
+  dareStake: number;
+  password: string;
+  targetTokens: number;
+  maxRounds: number;
+}
 
 /** Medallion emblem — a hand-drawn spade inside a coin ring, standing in for
     the old 🂡 glyph so the brand mark renders identically everywhere instead
@@ -85,14 +102,50 @@ function Toggle({ checked }: { checked: boolean }) {
   );
 }
 
+/** Gold segmented picker for a small set of game-setting choices. */
+function Segmented<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { label: string; value: T }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="text-xs text-ink-dim/60 mb-1.5">{label}</div>
+      <div className="flex gap-1.5">
+        {options.map((o) => (
+          <button
+            key={String(o.value)}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={[
+              "flex-1 py-2 rounded-lg text-sm font-semibold transition-all duration-150",
+              value === o.value
+                ? "bg-gold-400 text-felt-950 shadow-sm"
+                : "bg-white/[0.05] text-ink-dim/70 ring-1 ring-white/10 hover:bg-white/[0.09]",
+            ].join(" ")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Home({
   onPlayBots,
   onCreateRoom,
   onJoin,
   error,
 }: {
-  onPlayBots: (name: string, dareMode: boolean, password: string, dareStake: number) => void;
-  onCreateRoom: (name: string, dareMode: boolean, password: string, dareStake: number) => void;
+  onPlayBots: (settings: CreateSettings) => void;
+  onCreateRoom: (settings: CreateSettings) => void;
   onJoin: (name: string, joinCode: string, password: string) => void;
   error: string | null;
 }) {
@@ -105,6 +158,8 @@ export function Home({
   const [modalTab, setModalTab] = useState<"howto" | "rules" | null>(null);
   const [dareMode, setDareMode] = useState(true);
   const [dareStake, setDareStake] = useState(10);
+  const [targetTokens, setTargetTokens] = useState(10);
+  const [maxRounds, setMaxRounds] = useState(0);
   const [pendingAction, setPendingAction] = useState<"bots" | "create" | "join" | null>(null);
   const [showCreatePw, setShowCreatePw] = useState(false);
   const [showJoinPw, setShowJoinPw] = useState(false);
@@ -125,14 +180,18 @@ export function Home({
     if (error) setPendingAction(null);
   }, [error]);
 
+  function currentSettings(): CreateSettings {
+    return { name, dareMode, dareStake, password: createPassword, targetTokens, maxRounds };
+  }
+
   function handlePlayBots() {
     setPendingAction("bots");
-    onPlayBots(name, dareMode, createPassword, dareStake);
+    onPlayBots(currentSettings());
   }
 
   function handleCreateRoom() {
     setPendingAction("create");
-    onCreateRoom(name, dareMode, createPassword, dareStake);
+    onCreateRoom(currentSettings());
   }
 
   function handleJoin() {
@@ -260,6 +319,14 @@ export function Home({
                   </div>
                 </div>
               )}
+
+              <Segmented
+                label="Tokens to win"
+                options={TOKEN_OPTIONS.map((t) => ({ label: String(t), value: t }))}
+                value={targetTokens}
+                onChange={setTargetTokens}
+              />
+              <Segmented label="Rounds" options={ROUND_OPTIONS} value={maxRounds} onChange={setMaxRounds} />
 
               {showCreatePassword ? (
                 <div className="relative mb-4">

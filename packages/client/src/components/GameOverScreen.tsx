@@ -14,28 +14,36 @@ export function GameOverScreen({
   onRematch,
   onHome,
 }: {
-  winningTeam: 0 | 1;
+  winningTeam: 0 | 1 | null;
   tokens: [number, number];
   onRematch: () => void;
   onHome: () => void;
 }) {
-  useEffect(() => {
-    playVictorySound();
-  }, []);
+  const isDraw = winningTeam === null;
 
-  const accent = TEAM_ACCENT[winningTeam];
+  useEffect(() => {
+    if (!isDraw) playVictorySound();
+  }, [isDraw]);
+
+  const accent = isDraw ? { hex: "#e3bd5d", text: "text-gold-300" } : TEAM_ACCENT[winningTeam];
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <Confetti accentColor={accent.hex} />
+      {!isDraw && <Confetti accentColor={accent.hex} />}
 
       <div className="relative ring-foil bg-felt-800/95 rounded-[1.75rem] p-10 shadow-2xl text-center text-ink min-w-[320px]">
         <CornerAccent className="absolute -top-1 -left-1 w-8 h-8" />
         <CornerAccent className="absolute -bottom-1 -right-1 w-8 h-8 rotate-180" />
 
-        <div className="text-5xl mb-2">🏆</div>
+        <div className="text-5xl mb-2">{isDraw ? "🤝" : "🏆"}</div>
         <h2 className="font-display text-4xl font-semibold mb-2">
-          Team <span className={accent.text}>{winningTeam === 0 ? "A" : "B"}</span> wins!
+          {isDraw ? (
+            "It's a draw!"
+          ) : (
+            <>
+              Team <span className={accent.text}>{winningTeam === 0 ? "A" : "B"}</span> wins!
+            </>
+          )}
         </h2>
         <p className="text-ink-dim mb-8 text-lg">
           Final tokens — <span className="font-bold text-sapphire-300">A {tokens[0]}</span>

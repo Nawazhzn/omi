@@ -18,15 +18,20 @@ export interface RoomSnapshot extends PlayerView {
 }
 
 export interface ClientToServerEvents {
-  /** `password`, if set, gates room:join — knowing the join code alone is no longer enough. */
+  /**
+   * `password`, if set, gates room:join — knowing the join code alone is no longer enough.
+   * `playerId` is a stable private per-browser id: when a returning player joins the same
+   * room again (new tab, dropped connection, etc.) the server hands back their original
+   * seat instead of seating them twice. Never broadcast to other players.
+   */
   "room:create": (
-    payload: { name: string; rules?: Partial<RuleConfig>; password?: string },
+    payload: { name: string; rules?: Partial<RuleConfig>; password?: string; playerId?: string },
     ack: (
       res: { ok: true; roomId: string; joinCode: string; seat: Seat; rejoinToken: string } | { ok: false; error: string }
     ) => void
   ) => void;
   "room:join": (
-    payload: { joinCode: string; name: string; password?: string },
+    payload: { joinCode: string; name: string; password?: string; playerId?: string },
     ack: (res: { ok: true; roomId: string; seat: Seat; rejoinToken: string } | { ok: false; error: string }) => void
   ) => void;
   /** Reclaims a seat after a page refresh or dropped connection, using the private token issued at room:create/room:join — never broadcast to other players. */
