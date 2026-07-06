@@ -3,6 +3,7 @@ import type { Server } from "socket.io";
 import {
   beginHand,
   callTrump,
+  canForfeit,
   chooseBotCard,
   chooseBotTrump,
   continueTrick,
@@ -20,6 +21,7 @@ import {
   respondToDare,
   RuleConfig,
   Seat,
+  voteForfeit,
 } from "@omi/engine";
 import type { ClientToServerEvents, ServerToClientEvents, RoomSnapshot } from "@omi/engine";
 
@@ -64,6 +66,7 @@ export class Room {
   private turnTimer: NodeJS.Timeout | null = null;
   private botTimer: NodeJS.Timeout | null = null;
   private graceTimer: NodeJS.Timeout | null = null;
+  private forfeitTimer: NodeJS.Timeout | null = null;
   private destroyed = false;
 
   constructor(
@@ -234,6 +237,14 @@ export class Room {
     return correct;
   }
 
+  /** A seat on a no-trump team votes to forfeit the hand. */
+  handleVoteForfeit(socketId: string) {
+    const seat = this.seatBySocket(socketId);
+    if (!seat) throw new IllegalActionError("NO_SEAT", "Socket has no seat in this room");
+    this.state = voteForfeit(this.state, seat.seat);
+    this.afterMutation();
+  }
+
   /** Any seated participant can fast-forward the current grace period instead of waiting it out. */
   handleContinue(socketId: string) {
     const seat = this.seatBySocket(socketId);
@@ -261,7 +272,32 @@ export class Room {
       this.graceTimer = setTimeout(() => this.advancePastGrace(), ROUND_GRACE_MS);
       return;
     }
+    this.scheduleBotForfeit();
     this.scheduleNextActor();
+  }
+
+  /**
+   * A bot on a no-trump team auto-votes to forfeit at the start of the hand —
+   * the correct defensive play (a trumpless team can only get swept). Schedules
+   * one unvoted eligible bot at a time; afterMutation re-runs and picks up the
+   * next, so in a bot-vs-bot pairing both eventually vote and the hand voids,
+   * while a human teammate is left to confirm on their own.
+   */
+  private scheduleBotForfeit() {
+    if (this.state.phase !== "TRICK_PLAY" || this.state.trickHistory.length !== 0) return;
+    const botSeat = this.seats.find((s) => s.isBot && canForfeit(this.state, s.seat));
+    if (!botSeat) return;
+    this.forfeitTimer = setTimeout(() => this.performBotForfeit(botSeat.seat), BOT_MOVE_DELAY_MS);
+  }
+
+  private performBotForfeit(seat: Seat) {
+    try {
+      if (!canForfeit(this.state, seat)) return;
+      this.state = voteForfeit(this.state, seat);
+      this.afterMutation();
+    } catch {
+      // State moved on concurrently — drop the vote.
+    }
   }
 
   private advancePastGrace() {
@@ -354,9 +390,11 @@ export class Room {
     if (this.turnTimer) clearTimeout(this.turnTimer);
     if (this.botTimer) clearTimeout(this.botTimer);
     if (this.graceTimer) clearTimeout(this.graceTimer);
+    if (this.forfeitTimer) clearTimeout(this.forfeitTimer);
     this.turnTimer = null;
     this.botTimer = null;
     this.graceTimer = null;
+    this.forfeitTimer = null;
   }
 
   /**

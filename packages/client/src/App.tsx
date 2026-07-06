@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import type { Card, RoomSnapshot, Seat, Suit } from "@omi/engine";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { Card, Rank, RoomSnapshot, Seat, Suit } from "@omi/engine";
 import { socket } from "./socket.js";
 import { getPlayerId } from "./playerId.js";
-import { playCardSound, playTrickWonSound, playYourTurnSound, vibrate } from "./soundEffects.js";
+import {
+  playCardSound,
+  playSwordCutSound,
+  playTrickWonSound,
+  playTrumpRevealSound,
+  playYourTurnSound,
+  vibrate,
+} from "./soundEffects.js";
 import { clearMembership, readMembership, saveMembership } from "./sessionMembership.js";
 import { Home } from "./components/Home.js";
 import { Lobby } from "./components/Lobby.js";
@@ -15,6 +22,14 @@ import { GameOverScreen } from "./components/GameOverScreen.js";
 import { DareChallengeModal } from "./components/DareChallengeModal.js";
 import { DareResponseModal } from "./components/DareResponseModal.js";
 import { RoundIntroOverlay } from "./components/RoundIntroOverlay.js";
+// Three.js flourishes are heavy and only ever shown mid-game — lazy-load them
+// so the landing page and initial bundle don't carry the 3D engine.
+const TrumpRevealOverlay = lazy(() =>
+  import("./components/TrumpRevealOverlay.js").then((m) => ({ default: m.TrumpRevealOverlay }))
+);
+const TrumpCutOverlay = lazy(() =>
+  import("./components/TrumpCutOverlay.js").then((m) => ({ default: m.TrumpCutOverlay }))
+);
 
 /** Host-chosen room settings collected on the Home screen. */
 export interface CreateSettings {
@@ -33,11 +48,15 @@ export default function App() {
   const [dealBatch, setDealBatch] = useState<1 | 2 | null>(null);
   const [serverDisconnected, setServerDisconnected] = useState(false);
   const [roundIntro, setRoundIntro] = useState<number | null>(null);
+  const [trumpReveal, setTrumpReveal] = useState<Suit | null>(null);
+  const [swordCut, setSwordCut] = useState<{ rank: Rank; suit: Suit } | null>(null);
   const prevPhaseRef = useRef<RoomSnapshot["phase"] | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSnapshotRef = useRef<{ trickLen: number; phase: RoomSnapshot["phase"]; isMyTurn: boolean } | null>(null);
   const lastShownRoundRef = useRef<number | null>(null);
   const roundIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevTrumpRef = useRef<Suit | null | undefined>(undefined);
+  const prevCutTrickRef = useRef<number | null>(null);
 
   function showRoundIntro(round: number) {
     setRoundIntro(round);
@@ -49,6 +68,10 @@ export default function App() {
     if (roundIntroTimerRef.current) clearTimeout(roundIntroTimerRef.current);
     lastShownRoundRef.current = null;
     setRoundIntro(null);
+    setTrumpReveal(null);
+    setSwordCut(null);
+    prevTrumpRef.current = undefined;
+    prevCutTrickRef.current = null;
   }
 
   useEffect(() => {
@@ -110,6 +133,42 @@ export default function App() {
     showRoundIntro(view.handNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.phase, view?.handNumber]);
+
+  // Trump-reveal flourish: fire once when trumpSuit transitions from null (no
+  // trump yet this hand) to a suit. Skips the very first snapshot (undefined
+  // ref) so a mid-hand reconnect — which already has a trump set — stays quiet.
+  useEffect(() => {
+    if (!view) {
+      prevTrumpRef.current = undefined;
+      return;
+    }
+    const prev = prevTrumpRef.current;
+    if (prev !== undefined && prev === null && view.trumpSuit !== null) {
+      setTrumpReveal(view.trumpSuit);
+      playTrumpRevealSound();
+    }
+    prevTrumpRef.current = view.trumpSuit;
+  }, [view?.trumpSuit]);
+
+  // Sword-cut flourish: when a trick resolves and the winner trumped in over a
+  // non-trump lead (an actual "cut"). Keyed off lastTrick.index, and reset
+  // whenever we leave TRICK_RESOLVED so each trick fires at most once.
+  useEffect(() => {
+    if (!view || view.phase !== "TRICK_RESOLVED" || !view.lastTrick) {
+      prevCutTrickRef.current = null;
+      return;
+    }
+    const lt = view.lastTrick;
+    if (prevCutTrickRef.current === lt.index) return;
+    prevCutTrickRef.current = lt.index;
+    if (view.trumpSuit === null || lt.leadSuit === view.trumpSuit) return;
+    const winnerPlay = lt.plays.find((p) => p.seat === lt.winnerSeat);
+    if (winnerPlay && winnerPlay.card.suit === view.trumpSuit) {
+      setSwordCut({ rank: winnerPlay.card.rank, suit: winnerPlay.card.suit });
+      playSwordCutSound();
+      vibrate(40);
+    }
+  }, [view?.phase, view?.lastTrick]);
 
   // Tab title pings whenever it's this player's turn to act, so a backgrounded
   // tab is noticeable instead of silently running out the auto-play timer.
@@ -244,6 +303,12 @@ export default function App() {
     socket.emit("game:continue", {});
   }
 
+  function voteForfeit() {
+    socket.emit("game:voteForfeit", {}, (res) => {
+      if (!res.ok && res.error) showError(res.error);
+    });
+  }
+
   function declareDare(action: "pass" | "dare" | "allin") {
     socket.emit("game:declareDare", { action }, (res) => {
       if (!res.ok && res.error) showError(res.error);
@@ -300,7 +365,7 @@ export default function App() {
 
   return (
     <div className="relative">
-      <Table view={view} onPlayCard={playCard} onDeclareSlam={declareSlam} onContinue={continueRound} onRaiseFlag={raiseFlag} onLeave={goHome} onEndSession={endSession} />
+      <Table view={view} onPlayCard={playCard} onDeclareSlam={declareSlam} onContinue={continueRound} onRaiseFlag={raiseFlag} onLeave={goHome} onEndSession={endSession} onVoteForfeit={voteForfeit} />
 
       {view.phase === "AWAIT_CUT" && isCutter && <CutDeckModal onCut={cutDeck} />}
 
@@ -343,6 +408,11 @@ export default function App() {
       )}
 
       {roundIntro !== null && <RoundIntroOverlay round={roundIntro} maxRounds={view.rules.maxRounds} />}
+
+      <Suspense fallback={null}>
+        {trumpReveal && <TrumpRevealOverlay suit={trumpReveal} onDone={() => setTrumpReveal(null)} />}
+        {swordCut && <TrumpCutOverlay rank={swordCut.rank} suit={swordCut.suit} onDone={() => setSwordCut(null)} />}
+      </Suspense>
 
       {reconnectBanner}
 

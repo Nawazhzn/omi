@@ -377,6 +377,7 @@ export function Table({
   onRaiseFlag,
   onLeave,
   onEndSession,
+  onVoteForfeit,
 }: {
   view: RoomSnapshot;
   onPlayCard: (card: Card) => void;
@@ -385,6 +386,7 @@ export function Table({
   onRaiseFlag: (targetSeat: Seat) => void;
   onLeave: () => void;
   onEndSession: () => void;
+  onVoteForfeit: () => void;
 }) {
   const mySeat = view.mySeat;
   const partner = ((mySeat + 2) % 4) as Seat;
@@ -398,6 +400,9 @@ export function Table({
   const [confirmEndSession, setConfirmEndSession] = useState(false);
   const isDealer = view.dealerSeat === mySeat;
   const isHost = mySeat === 0;
+  const iVotedForfeit = view.forfeitVotes[mySeat];
+  const partnerVotedForfeit = view.forfeitVotes[partner];
+  const showForfeit = view.phase === "TRICK_PLAY" && (view.canForfeit || iVotedForfeit);
 
   function copyJoinCode() {
     const flash = () => {
@@ -726,6 +731,27 @@ export function Table({
               </div>
             )}
           </div>
+          {showForfeit && (
+            <div className="flex items-center gap-2.5 bg-ruby-700/25 ring-1 ring-ruby-500/40 rounded-full pl-4 pr-2 py-1.5">
+              {iVotedForfeit ? (
+                <span className="text-ruby-200 text-xs font-semibold">
+                  {partnerVotedForfeit ? "Forfeiting…" : "Waiting for your partner to forfeit…"}
+                </span>
+              ) : (
+                <>
+                  <span className="text-ruby-200 text-xs font-semibold">
+                    {partnerVotedForfeit ? "Partner wants to forfeit — no trumps." : "Your team holds no trump."}
+                  </span>
+                  <button
+                    onClick={onVoteForfeit}
+                    className="bg-ruby-600 hover:bg-ruby-500 active:scale-95 text-white text-xs font-bold px-3 py-1 rounded-full transition-all duration-150"
+                  >
+                    {partnerVotedForfeit ? "Confirm forfeit" : "Vote to forfeit"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className={["w-1.5 h-1.5 rounded-full", myAccent.dot].join(" ")} />
             <span className="text-ink-dim/70 text-xs">You{isDealer ? " · Dealer" : ""}</span>

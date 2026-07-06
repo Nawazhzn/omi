@@ -57,6 +57,7 @@ export function createInitialState(rules: Partial<RuleConfig> = {}, dealerSeat: 
     allInUsed: [false, false],
     dareStreak: [0, 0],
     slamDeclaredByTeam: null,
+    forfeitVotes: [false, false, false, false],
     winningTeam: null,
     lastHandResult: null,
   };
@@ -109,6 +110,7 @@ export function beginHand(state: GameState): GameState {
     lastTrick: null,
     dare: { level: "none", challengerTeam: null },
     slamDeclaredByTeam: null,
+    forfeitVotes: [false, false, false, false],
     lastHandResult: null,
     deckRemainder: deck,
   };
@@ -450,6 +452,7 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
     slamFailedTeam: null,
     flag: { raisedByTeam: accusingTeam, offendingSeat: targetSeat, offendingTeam: targetTeam } as FlagResult,
     dare: cancelledDare,
+    forfeit: null,
   };
 
   const outcome = decideGameEnd(state, tokens);
@@ -653,6 +656,7 @@ export function scoreHand(state: GameState): GameState {
     slamFailedTeam,
     flag: null,
     dare: dareResult,
+    forfeit: null,
   };
 
   const outcome = decideGameEnd(state, tokens);
@@ -680,4 +684,90 @@ export function nextHand(state: GameState): GameState {
     dealerSeat: nextSeat(state.dealerSeat),
   };
   return beginHand(advanced);
+}
+
+/** True when trump is set and neither seat of `team` holds a single trump card. */
+export function teamHoldsNoTrump(state: GameState, team: Team): boolean {
+  if (state.trumpSuit === null) return false;
+  return SEATS.filter((s) => teamOfSeat(s) === team).every(
+    (s) => !state.hands[s].some((c) => c.suit === state.trumpSuit)
+  );
+}
+
+/**
+ * Whether `seat` may currently vote to forfeit the hand: it's the very start
+ * of trick play (no trick resolved yet), the seat's team holds no trump, and
+ * it hasn't already voted.
+ */
+export function canForfeit(state: GameState, seat: Seat): boolean {
+  return (
+    state.phase === "TRICK_PLAY" &&
+    state.trickHistory.length === 0 &&
+    !state.forfeitVotes[seat] &&
+    teamHoldsNoTrump(state, teamOfSeat(seat))
+  );
+}
+
+/**
+ * Records a forfeit vote from `seat`. When BOTH members of a team that holds
+ * no trump have voted, the hand is voided immediately: no tokens are awarded
+ * to anyone, and any active dare is cancelled/refunded. A single vote just
+ * registers, leaving the hand in progress for the teammate to confirm.
+ */
+export function voteForfeit(state: GameState, seat: Seat): GameState {
+  if (state.phase !== "TRICK_PLAY" || state.trickHistory.length !== 0) {
+    throw new IllegalActionError("BAD_PHASE", "Can only forfeit at the very start of a hand");
+  }
+  const team = teamOfSeat(seat);
+  if (!teamHoldsNoTrump(state, team)) {
+    throw new IllegalActionError("HAS_TRUMP", "Only a team holding no trump may forfeit");
+  }
+
+  const forfeitVotes = [...state.forfeitVotes] as [boolean, boolean, boolean, boolean];
+  forfeitVotes[seat] = true;
+
+  const bothVoted = SEATS.filter((s) => teamOfSeat(s) === team).every((s) => forfeitVotes[s]);
+  if (!bothVoted) {
+    return { ...state, forfeitVotes };
+  }
+
+  const dareResult: DareResult | null =
+    state.dare.level === "none"
+      ? null
+      : {
+          level: state.dare.level,
+          multiplier: DARE_MULTIPLIER[state.dare.level],
+          challengerTeam: state.dare.challengerTeam ?? team,
+          winnerTeam: null,
+          cancelled: true,
+          coinsDelta: [0, 0, 0, 0],
+          kapothiBonusApplied: false,
+          streakBonusApplied: false,
+          comebackBonusApplied: false,
+          streakAfter: state.dareStreak[team],
+        };
+
+  const result: HandResult = {
+    trickCounts: [0, 0],
+    tokensAwarded: [0, 0],
+    kapothi: false,
+    kapothiTeam: null,
+    pendingBonusApplied: 0,
+    pendingBonusAfter: state.pendingBonus,
+    slamFailedTeam: null,
+    flag: null,
+    dare: dareResult,
+    forfeit: { team },
+  };
+
+  const outcome = decideGameEnd(state, state.tokens); // tokens unchanged — the hand is a wash
+  return {
+    ...state,
+    forfeitVotes,
+    currentTrick: [],
+    currentTurnSeat: null,
+    lastHandResult: result,
+    phase: outcome.phase,
+    winningTeam: outcome.winningTeam,
+  };
 }

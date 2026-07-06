@@ -62,6 +62,8 @@ export interface ClientToServerEvents {
     payload: { action: "accept" | "safe" | "redare" },
     ack: (res: { ok: boolean; error?: string }) => void
   ) => void;
+  /** Votes to forfeit the current hand — only valid when the caller's team holds no trump. */
+  "game:voteForfeit": (payload: Record<string, never>, ack: (res: { ok: boolean; error?: string }) => void) => void;
   /** Fast-forwards the current grace period (after a trick or a hand) instead of waiting out the full pause. */
   "game:continue": (payload: Record<string, never>) => void;
   "game:rematchVote": (payload: { vote: boolean }) => void;

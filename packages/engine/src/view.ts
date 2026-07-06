@@ -1,4 +1,4 @@
-import { legalCardsFor } from "./engine.js";
+import { canForfeit, legalCardsFor } from "./engine.js";
 import { Card, DareState, GameState, PublicResolvedTrick, PublicTrickPlay, Seat, SEATS, Suit, TrickPlay } from "./types.js";
 
 export interface OpponentSummary {
@@ -38,6 +38,10 @@ export interface PlayerView {
   dareStreak: [number, number];
   handNumber: number;
   slamDeclaredByTeam: 0 | 1 | null;
+  /** Whether THIS seat may currently vote to forfeit (its team holds no trump). */
+  canForfeit: boolean;
+  /** Per-seat forfeit votes — public, so the UI can show a partner's pending vote. */
+  forfeitVotes: [boolean, boolean, boolean, boolean];
   winningTeam: 0 | 1 | null;
   lastHandResult: GameState["lastHandResult"];
   rules: GameState["rules"];
@@ -115,6 +119,8 @@ export function redactStateForSeat(state: GameState, seat: Seat): PlayerView {
     dareStreak: state.dareStreak,
     handNumber: state.handNumber,
     slamDeclaredByTeam: state.slamDeclaredByTeam,
+    canForfeit: canForfeit(state, seat),
+    forfeitVotes: state.forfeitVotes,
     winningTeam: state.winningTeam,
     lastHandResult: state.lastHandResult,
     rules: state.rules,
