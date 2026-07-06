@@ -31,11 +31,13 @@ body,
   --gold-600: #96721f;
 
   /* Gem accents for the two partnerships, in place of generic sky/rose:
-     a Ceylon sapphire and a Ceylon ruby. */
-  --sapphire-300: #7fb8e0;
+     a Ceylon sapphire and a Ceylon ruby. The -300 tints are brightened and
+     more saturated so team text pops clearly against the dark jade felt
+     (well past WCAG AA) and the two sides read as unmistakably different. */
+  --sapphire-300: #8ecbff;
   --sapphire-500: #2c6f9e;
   --sapphire-700: #1c4a6b;
-  --ruby-300: #e39ab0;
+  --ruby-300: #ff9fbd;
   --ruby-500: #a8304f;
   --ruby-700: #741f37;
 }

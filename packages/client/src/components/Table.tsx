@@ -450,12 +450,12 @@ export function Table({
   const turnCountdown = useLocalCountdown(turnTimeoutActive, `${view.phase}-${activeSeat}-${view.currentTrick.length}`, 20);
 
   const leadSuit = view.currentTrick[0]?.card.suit ?? null;
-  const myFlagsLeft = view.flagsRemaining[myTeam];
+  // Flags are unlimited — a wrong flag simply has no effect, so there is no
+  // per-team cap gating whether a seat can be challenged.
   const canFlagSeat = (seat: Seat, card: Card | null) =>
     card !== null &&
     (view.phase === "TRICK_PLAY" || view.phase === "TRICK_RESOLVED") &&
     teamOf(seat) !== myTeam &&
-    myFlagsLeft > 0 &&
     leadSuit !== null &&
     card.suit !== leadSuit;
 
@@ -532,10 +532,8 @@ export function Table({
               +{view.pendingBonus} carry-over
             </span>
           )}
-          <span className="flex items-center gap-2 bg-white/[0.06] ring-1 ring-white/10 px-3 py-1.5 rounded-full font-semibold" title="Flag chances remaining per team">
-            🚩 <span className={TEAM_ACCENT[0].text}>{view.flagsRemaining[0]}</span>
-            <span className="text-ink-dim/30">/</span>
-            <span className={TEAM_ACCENT[1].text}>{view.flagsRemaining[1]}</span>
+          <span className="flex items-center gap-2 bg-white/[0.06] ring-1 ring-white/10 px-3 py-1.5 rounded-full font-semibold" title="Flags are unlimited — a wrong flag just has no effect">
+            🚩 <span className="text-gold-300 text-lg leading-none">∞</span>
           </span>
           {view.trumpSuit && (
             <span className="shine-surface flex items-center gap-1 bg-gradient-to-r from-gold-300 to-gold-500 text-felt-950 px-3 py-1.5 rounded-full font-bold shadow-md">

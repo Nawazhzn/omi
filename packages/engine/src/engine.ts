@@ -398,9 +398,8 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
   if (accusingTeam === targetTeam) {
     throw new IllegalActionError("SAME_TEAM", "You can only flag an opposing player");
   }
-  if (state.flagsRemaining[accusingTeam] <= 0) {
-    throw new IllegalActionError("NO_FLAGS_LEFT", "Your team has no flag chances remaining");
-  }
+  // Flags are unlimited — a wrong flag simply has no effect and play continues,
+  // so a genuine follow-suit violation can always be caught. No per-team cap.
   const play = state.currentTrick.find((p) => p.seat === targetSeat);
   if (!play) {
     throw new IllegalActionError("NOTHING_TO_FLAG", "That player hasn't played a card in this trick");
@@ -410,12 +409,9 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
     throw new IllegalActionError("NOTHING_TO_FLAG", "That play followed the led suit — nothing to flag");
   }
 
-  const flagsRemaining: [number, number] = [...state.flagsRemaining];
-  flagsRemaining[accusingTeam] -= 1;
-
   if (!play.violatesFollowSuit) {
-    // Wrong flag: chance spent, no penalty, game continues normally.
-    return { state: { ...state, flagsRemaining }, correct: false };
+    // Wrong flag: no penalty, no cost, game continues normally.
+    return { state, correct: false };
   }
 
   // Correct flag: offending team penalized, flagging team gets 3 tokens,
@@ -461,7 +457,6 @@ export function raiseFlag(state: GameState, accusingSeat: Seat, targetSeat: Seat
     state: {
       ...state,
       tokens,
-      flagsRemaining,
       currentTrick: [],
       currentTurnSeat: null,
       lastHandResult: result,

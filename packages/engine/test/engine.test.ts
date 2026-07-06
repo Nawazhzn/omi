@@ -764,11 +764,9 @@ describe("flag / challenge rule (wrong suit play)", () => {
 
     const accusingTeam = (leader % 2) as 0 | 1;
     const offendingTeam = (second % 2) as 0 | 1;
-    const flagsBefore = state.flagsRemaining[accusingTeam];
 
     const { state: next, correct } = raiseFlag(state, leader, second);
     expect(correct).toBe(true);
-    expect(next.flagsRemaining[accusingTeam]).toBe(flagsBefore - 1);
     expect(next.tokens[accusingTeam]).toBe(3);
     expect(next.tokens[offendingTeam]).toBe(0);
     expect(next.phase).toBe("HAND_SCORING");
@@ -779,7 +777,7 @@ describe("flag / challenge rule (wrong suit play)", () => {
     });
   });
 
-  it("a wrong flag consumes a chance with no penalty and the game continues", () => {
+  it("a wrong flag has no penalty and the game continues", () => {
     let state = freshHandState();
     state = callDefaultTrump(state); // trump = S
     const leader = state.currentTurnSeat!;
@@ -791,13 +789,10 @@ describe("flag / challenge rule (wrong suit play)", () => {
     state = playCard(state, leader, { suit: "H", rank: "9" });
     state = playCard(state, second, { suit: "C", rank: "7" });
 
-    const accusingTeam = (leader % 2) as 0 | 1;
-    const flagsBefore = state.flagsRemaining[accusingTeam];
     const tokensBefore = [...state.tokens];
 
     const { state: next, correct } = raiseFlag(state, leader, second);
     expect(correct).toBe(false);
-    expect(next.flagsRemaining[accusingTeam]).toBe(flagsBefore - 1);
     expect(next.tokens).toEqual(tokensBefore);
     expect(next.phase).toBe("TRICK_PLAY");
   });
@@ -829,7 +824,7 @@ describe("flag / challenge rule (wrong suit play)", () => {
     expect(() => raiseFlag(state, leader, second)).toThrow(IllegalActionError);
   });
 
-  it("blocks further flags once a team has used all of its chances", () => {
+  it("allows unlimited flags — a team can keep challenging with no cap", () => {
     let state = freshHandState({ flagsPerTeam: 3 });
     state = callDefaultTrump(state);
     const leader = state.currentTurnSeat!;
@@ -839,14 +834,13 @@ describe("flag / challenge rule (wrong suit play)", () => {
     state = playCard(state, leader, { suit: "H", rank: "9" });
     state = playCard(state, second, { suit: "C", rank: "7" });
 
-    const accusingTeam = (leader % 2) as 0 | 1;
-    for (let i = 0; i < 3; i++) {
+    // Far more than the old cap of 3 — none of these should ever throw.
+    for (let i = 0; i < 10; i++) {
       const outcome = raiseFlag(state, leader, second);
       expect(outcome.correct).toBe(false);
       state = outcome.state;
     }
-    expect(state.flagsRemaining[accusingTeam]).toBe(0);
-    expect(() => raiseFlag(state, leader, second)).toThrow(IllegalActionError);
+    expect(() => raiseFlag(state, leader, second)).not.toThrow();
   });
 
   it("never exposes violatesFollowSuit through the redacted view", () => {
