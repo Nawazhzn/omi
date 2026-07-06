@@ -1,14 +1,26 @@
 import { rankValue } from "./deck.js";
 import { legalCardsFor } from "./engine.js";
-import { Card, GameState, Seat, Suit } from "./types.js";
+import { Card, GameState, Seat, Suit, SUITS } from "./types.js";
 
-/** Picks the suit of the bot's lowest-ranked card, a common opening heuristic for a blind trump call. */
+/**
+ * Calls the suit the bot is longest in — more trumps means more control of the
+ * hand, the sensible blind-call heuristic. Ties are broken toward the suit
+ * whose cards are collectively higher-ranked.
+ */
 export function chooseBotTrump(hand: Card[]): Suit {
-  let lowest = hand[0];
-  for (const c of hand) {
-    if (rankValue(c.rank) < rankValue(lowest.rank)) lowest = c;
+  let best: Suit = SUITS[0];
+  let bestScore = -1;
+  for (const suit of SUITS) {
+    const cards = hand.filter((c) => c.suit === suit);
+    // Length dominates (×100); summed rank strength breaks ties between
+    // suits of equal length.
+    const score = cards.length * 100 + cards.reduce((sum, c) => sum + rankValue(c.rank), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = suit;
+    }
   }
-  return lowest.suit;
+  return best;
 }
 
 /**
@@ -21,8 +33,10 @@ export function chooseBotCard(state: GameState, seat: Seat): Card {
   if (legal.length === 1) return legal[0];
 
   if (state.currentTrick.length === 0) {
-    // Leading: play the lowest card of our longest non-trump suit, or lowest overall.
-    return lowestCard(legal);
+    // Leading: conserve trump by leading the lowest card from a non-trump suit
+    // when we have one; fall back to our lowest card if we hold only trump.
+    const nonTrump = legal.filter((c) => c.suit !== state.trumpSuit);
+    return lowestCard(nonTrump.length > 0 ? nonTrump : legal);
   }
 
   const leadSuit = state.currentTrick[0].card.suit;

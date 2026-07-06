@@ -1,4 +1,5 @@
 import { freshDeck, rankValue, shuffle } from "./deck.js";
+import { secureRandomInt } from "./rng.js";
 import {
   Card,
   cardsEqual,
@@ -111,16 +112,29 @@ export function beginHand(state: GameState): GameState {
     dare: { level: "none", challengerTeam: null },
     slamDeclaredByTeam: null,
     forfeitVotes: [false, false, false, false],
+    winningTeam: null,
     lastHandResult: null,
     deckRemainder: deck,
   };
 }
 
 /**
- * The seat to the dealer's left cuts the shuffled deck before dealing
- * begins. The exact cut point has no statistical effect on an
- * already-shuffled deck — it's a ritual, not a security measure — so any
- * position is accepted and a sensible default is used if omitted.
+ * A crypto-random cut point clustered around the middle of the 32-card deck
+ * (roughly 12–20), so an omitted/auto cut still "splits the deck near the
+ * half" like a real cut instead of always slicing at a fixed spot.
+ */
+export function randomCutPosition(): number {
+  // secureRandomInt(9) -> 0..8, offset to 12..20 (a natural near-half cut).
+  return 12 + secureRandomInt(9);
+}
+
+/**
+ * The seat to the dealer's left cuts the shuffled deck before dealing begins:
+ * the deck is split at `cutPosition` and the bottom portion (from the cut
+ * point onward — the "second half") is brought to the top. The exact cut
+ * point has no statistical effect on an already-shuffled deck — it's a ritual,
+ * not a security measure — so any position is accepted, and when one is
+ * omitted a crypto-random near-half cut is used.
  */
 export function cutDeck(state: GameState, seat: Seat, cutPosition?: number): GameState {
   if (state.phase !== "AWAIT_CUT") {
@@ -133,8 +147,9 @@ export function cutDeck(state: GameState, seat: Seat, cutPosition?: number): Gam
   if (!deck || deck.length !== 32) {
     throw new Error("Internal error: missing deck for cut");
   }
-  const requested = Number.isFinite(cutPosition) ? Math.floor(cutPosition as number) : 16;
+  const requested = Number.isFinite(cutPosition) ? Math.floor(cutPosition as number) : randomCutPosition();
   const pos = Math.max(1, Math.min(31, requested));
+  // Bring the second half (deck[pos..]) up on top of the first half.
   const cut = [...deck.slice(pos), ...deck.slice(0, pos)];
   return dealBatch1({ ...state, deckRemainder: cut });
 }
@@ -596,7 +611,6 @@ function resolveDare(state: GameState, trickCounts: [number, number]): DareOutco
 export function scoreHand(state: GameState): GameState {
   const trickCounts = countTricksByTeam(state);
   const callerTeam = teamOfSeat(state.trumpCallerSeat);
-  const otherTeam: Team = callerTeam === 0 ? 1 : 0;
 
   let tokensAwarded: [number, number] = [0, 0];
   let kapothi = false;

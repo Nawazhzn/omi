@@ -366,8 +366,8 @@ export class Room {
   private performBotMove(seat: Seat) {
     try {
       if (this.state.phase === "AWAIT_CUT") {
-        const pos = 8 + Math.floor(Math.random() * 16);
-        this.state = cutDeck(this.state, seat, pos);
+        // Omit the position so the engine picks a crypto-random near-half cut.
+        this.state = cutDeck(this.state, seat);
       } else if (this.state.phase === "AWAIT_TRUMP_CALL") {
         const suit = chooseBotTrump(this.state.hands[seat]);
         this.state = callTrump(this.state, seat, suit);

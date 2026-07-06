@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   beginHand,
   callTrump,
+  chooseBotCard,
+  chooseBotTrump,
   continueTrick,
   createInitialState,
   cutDeck,
@@ -925,3 +927,52 @@ function playTrickWithWinnerNoAdvance(state: GameState): GameState {
   }
   return state;
 }
+
+describe("bot heuristics", () => {
+  it("chooseBotTrump calls the suit the bot is longest in", () => {
+    const hand: Card[] = [
+      { suit: "H", rank: "7" },
+      { suit: "H", rank: "9" },
+      { suit: "H", rank: "J" },
+      { suit: "S", rank: "A" }, // a lone high spade — the old 'lowest card' rule would wrongly pick a different suit
+    ];
+    expect(chooseBotTrump(hand)).toBe("H");
+  });
+
+  it("chooseBotTrump breaks length ties toward the stronger suit", () => {
+    const hand: Card[] = [
+      { suit: "C", rank: "7" },
+      { suit: "C", rank: "8" },
+      { suit: "D", rank: "A" },
+      { suit: "D", rank: "K" },
+    ];
+    // Both suits have 2 cards; diamonds (A,K) are collectively stronger than clubs (7,8).
+    expect(chooseBotTrump(hand)).toBe("D");
+  });
+
+  it("a leading bot conserves trump by not leading it when a non-trump card is available", () => {
+    let state = freshHandState();
+    state = callDefaultTrump(state); // trump = S
+    const leader = state.currentTurnSeat!;
+    // Give the leader one very low trump plus higher non-trump cards.
+    state.hands[leader] = [
+      { suit: "S", rank: "7" }, // lowest overall, but trump — must NOT be led
+      { suit: "H", rank: "9" },
+      { suit: "D", rank: "10" },
+    ];
+    const led = chooseBotCard(state, leader);
+    expect(led.suit).not.toBe("S");
+  });
+
+  it("a leading bot with only trump left leads trump", () => {
+    let state = freshHandState();
+    state = callDefaultTrump(state); // trump = S
+    const leader = state.currentTurnSeat!;
+    state.hands[leader] = [
+      { suit: "S", rank: "7" },
+      { suit: "S", rank: "9" },
+    ];
+    const led = chooseBotCard(state, leader);
+    expect(led.suit).toBe("S");
+  });
+});
