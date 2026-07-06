@@ -310,17 +310,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("game:voteForfeit", (_payload, ack) => {
-    const room = currentRoomId ? rooms.get(currentRoomId) : undefined;
-    if (!room) return ack({ ok: false, error: "Not in a room" });
-    try {
-      room.handleVoteForfeit(socket.id);
-      ack({ ok: true });
-    } catch (err) {
-      ack({ ok: false, error: errorMessage(err) });
-    }
-  });
-
   socket.on("game:continue", () => {
     if (!currentRoomId) return;
     rooms.get(currentRoomId)?.handleContinue(socket.id);

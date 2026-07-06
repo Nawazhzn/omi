@@ -163,8 +163,6 @@ export interface HandResult {
   flag: FlagResult | null;
   /** Set when Dare Mode was active and a challenge was actually issued this hand. */
   dare: DareResult | null;
-  /** Set when a team with no trump cards voted to void the hand — no tokens to anyone. */
-  forfeit: { team: Team } | null;
 }
 
 export interface GameState {
@@ -204,10 +202,6 @@ export interface GameState {
   dareStreak: [number, number];
 
   slamDeclaredByTeam: Team | null;
-
-  /** Per-seat "forfeit this hand" votes, reset each hand. When both seats of a
-      team that holds no trump have voted, the hand is voided (no tokens). */
-  forfeitVotes: [boolean, boolean, boolean, boolean];
 
   winningTeam: Team | null;
   lastHandResult: HandResult | null;

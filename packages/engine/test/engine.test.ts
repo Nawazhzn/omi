@@ -17,8 +17,6 @@ import {
   raiseFlag,
   redactStateForSeat,
   respondToDare,
-  teamHoldsNoTrump,
-  voteForfeit,
 } from "../src/index.js";
 import { Card, Seat, Suit } from "../src/types.js";
 
@@ -431,50 +429,6 @@ describe("win condition and dealer rotation", () => {
     state = playHandWithWinners(state, Array(8).fill(caller));
     expect(state.phase).toBe("HAND_SCORING");
     expect(state.winningTeam).toBeNull();
-  });
-});
-
-describe("cut/call seating", () => {
-  it("has the deck-cutter and the trump-caller on the same team, for every dealer", () => {
-    for (let d = 0 as Seat; d < 4; d = (d + 1) as Seat) {
-      const s = beginHand(createInitialState({}, d));
-      expect(s.cutSeat % 2).toBe(s.trumpCallerSeat % 2); // same team
-      expect(s.cutSeat).not.toBe(s.trumpCallerSeat); // but two different players
-      expect(s.cutSeat % 2).not.toBe(d % 2); // and the opposing team from the dealer
-    }
-  });
-});
-
-describe("no-trump forfeit vote", () => {
-  /** Forces team 0 (seats 0,2) to hold no trump by stripping spades from their hands. */
-  function noTrumpForTeam0(): GameState {
-    const base = callDefaultTrump(freshHandState({}));
-    const stripSpades = (hand: Card[]) => hand.filter((c) => c.suit !== "S");
-    return {
-      ...base,
-      trumpSuit: "S",
-      hands: [stripSpades(base.hands[0]), base.hands[1], stripSpades(base.hands[2]), base.hands[3]],
-    };
-  }
-
-  it("voids the hand once both members of a trumpless team vote", () => {
-    const state0 = noTrumpForTeam0();
-    expect(teamHoldsNoTrump(state0, 0)).toBe(true);
-
-    let state = voteForfeit(state0, 0);
-    expect(state.phase).toBe("TRICK_PLAY"); // one vote isn't enough
-
-    state = voteForfeit(state, 2);
-    expect(state.phase).toBe("HAND_SCORING");
-    expect(state.lastHandResult?.forfeit).toEqual({ team: 0 });
-    expect(state.lastHandResult?.tokensAwarded).toEqual([0, 0]);
-    expect(state.tokens).toEqual(state0.tokens); // no points to anyone
-  });
-
-  it("rejects a forfeit vote from a team that holds a trump", () => {
-    const state = noTrumpForTeam0(); // team 1 (seats 1,3) still has the spades
-    expect(teamHoldsNoTrump(state, 1)).toBe(false);
-    expect(() => voteForfeit(state, 1)).toThrow(IllegalActionError);
   });
 });
 

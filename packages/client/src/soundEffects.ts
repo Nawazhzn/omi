@@ -58,41 +58,6 @@ export function playVictorySound() {
   notes.forEach((freq, i) => setTimeout(() => playTone(freq, 260, 0.07, "triangle"), i * 110));
 }
 
-/** A frequency-sweeping tone — used for the sword whoosh. */
-function playSweep(from: number, to: number, durationMs: number, volume = 0.06, type: OscillatorType = "sawtooth") {
-  if (!isSoundEnabled()) return;
-  const ctx = getCtx();
-  if (!ctx) return;
-  try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(from, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), ctx.currentTime + durationMs / 1000);
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + durationMs / 1000);
-  } catch {
-    // Audio isn't available in every environment — fail silently.
-  }
-}
-
-/** A shimmering rising chord when trump is revealed. */
-export function playTrumpRevealSound() {
-  if (!isSoundEnabled()) return;
-  [523.25, 659.25, 880].forEach((f, i) => setTimeout(() => playTone(f, 240, 0.05, "triangle"), i * 70));
-}
-
-/** A quick downward whoosh + metallic clink for a trump "cut". */
-export function playSwordCutSound() {
-  if (!isSoundEnabled()) return;
-  playSweep(1500, 320, 180, 0.05, "sawtooth");
-  setTimeout(() => playTone(2100, 120, 0.045, "square"), 120);
-}
-
 /** Short haptic pulse for the same "your turn" / "trick won" moments — tied to
     the sound toggle since this app doesn't expose a separate haptics setting. */
 export function vibrate(pattern: number | number[]) {
